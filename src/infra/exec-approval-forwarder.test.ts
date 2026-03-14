@@ -27,6 +27,15 @@ function getFirstDeliveryText(deliver: ReturnType<typeof vi.fn>): string {
   return firstCall?.payloads?.[0]?.text ?? "";
 }
 
+function getFirstDeliveryPayload(
+  deliver: ReturnType<typeof vi.fn>,
+): { text?: string; channelData?: Record<string, unknown> } | undefined {
+  const firstCall = deliver.mock.calls[0]?.[0] as
+    | { payloads?: Array<{ text?: string; channelData?: Record<string, unknown> }> }
+    | undefined;
+  return firstCall?.payloads?.[0];
+}
+
 const TARGETS_CFG = {
   approvals: {
     exec: {
@@ -163,6 +172,37 @@ describe("exec approval forwarder", () => {
 
     await vi.runAllTimersAsync();
     expect(deliver).toHaveBeenCalledTimes(2);
+  });
+
+  it("adds telegram approval buttons to forwarded requests", async () => {
+    vi.useFakeTimers();
+    const { deliver, forwarder } = createForwarder({ cfg: TARGETS_CFG });
+
+    await expect(forwarder.handleRequested(baseRequest)).resolves.toBe(true);
+
+    expect(getFirstDeliveryPayload(deliver)).toEqual(
+      expect.objectContaining({
+        channelData: {
+          telegram: {
+            buttons: [
+              [
+                {
+                  text: "Allow once",
+                  callback_data: "/approve req-1 allow-once",
+                  style: "primary",
+                },
+                {
+                  text: "Allow always",
+                  callback_data: "/approve req-1 allow-always",
+                  style: "success",
+                },
+              ],
+              [{ text: "Deny", callback_data: "/approve req-1 deny", style: "danger" }],
+            ],
+          },
+        },
+      }),
+    );
   });
 
   it("formats single-line commands as inline code", async () => {

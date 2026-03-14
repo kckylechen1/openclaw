@@ -195,6 +195,20 @@ function buildRequestMessage(request: ExecApprovalRequest, nowMs: number) {
   return lines.join("\n");
 }
 
+function buildTelegramApprovalButtons(request: ExecApprovalRequest) {
+  return [
+    [
+      { text: "Allow once", callback_data: `/approve ${request.id} allow-once`, style: "primary" },
+      {
+        text: "Allow always",
+        callback_data: `/approve ${request.id} allow-always`,
+        style: "success",
+      },
+    ],
+    [{ text: "Deny", callback_data: `/approve ${request.id} deny`, style: "danger" }],
+  ] as const;
+}
+
 function decisionLabel(decision: ExecApprovalDecision): string {
   if (decision === "allow-once") {
     return "allowed once";
@@ -264,6 +278,7 @@ async function deliverToTargets(params: {
   text: string;
   deliver: typeof deliverOutboundPayloads;
   shouldSend?: () => boolean;
+  buildPayload?: (target: ForwardTarget) => { text: string; channelData?: Record<string, unknown> };
 }) {
   const deliveries = params.targets.map(async (target) => {
     if (params.shouldSend && !params.shouldSend()) {
@@ -274,13 +289,14 @@ async function deliverToTargets(params: {
       return;
     }
     try {
+      const payload = params.buildPayload ? params.buildPayload(target) : { text: params.text };
       await params.deliver({
         cfg: params.cfg,
         channel,
         to: target.to,
         accountId: target.accountId,
         threadId: target.threadId,
-        payloads: [{ text: params.text }],
+        payloads: [payload],
       });
     } catch (err) {
       log.error(`exec approvals: failed to deliver to ${channel}:${target.to}: ${String(err)}`);
@@ -385,6 +401,18 @@ export function createExecApprovalForwarder(
       text,
       deliver,
       shouldSend: () => pending.get(request.id) === pendingEntry,
+      buildPayload: (target) => ({
+        text,
+        ...(normalizeMessageChannel(target.channel) === "telegram"
+          ? {
+              channelData: {
+                telegram: {
+                  buttons: buildTelegramApprovalButtons(request),
+                },
+              },
+            }
+          : {}),
+      }),
     }).catch((err) => {
       log.error(`exec approvals: failed to deliver request ${request.id}: ${String(err)}`);
     });
