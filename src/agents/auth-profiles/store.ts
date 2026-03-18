@@ -121,6 +121,19 @@ function writeCachedAuthProfileStore(
   });
 }
 
+/**
+ * Update a single entry in the runtime auth-profile snapshot cache.
+ * Called after `upsertAuthProfile` writes to disk so the running gateway
+ * picks up the change immediately without a restart or config reload.
+ */
+export function updateRuntimeAuthProfileStoreSnapshot(
+  agentDir: string | undefined,
+  store: AuthProfileStore,
+): void {
+  const key = resolveRuntimeStoreKey(agentDir);
+  runtimeAuthStoreSnapshots.set(key, cloneAuthProfileStore(store));
+}
+
 export async function updateAuthProfileStoreWithLock(params: {
   agentDir?: string;
   updater: (store: AuthProfileStore) => boolean;
@@ -134,6 +147,8 @@ export async function updateAuthProfileStoreWithLock(params: {
       const shouldSave = params.updater(store);
       if (shouldSave) {
         saveAuthProfileStore(store, params.agentDir);
+        // Keep the in-memory runtime snapshot in sync.
+        updateRuntimeAuthProfileStoreSnapshot(params.agentDir, store);
       }
       return store;
     });

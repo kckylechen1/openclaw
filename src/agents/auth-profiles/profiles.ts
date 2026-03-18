@@ -5,6 +5,7 @@ import {
   ensureAuthProfileStore,
   saveAuthProfileStore,
   updateAuthProfileStoreWithLock,
+  updateRuntimeAuthProfileStoreSnapshot,
 } from "./store.js";
 import type { AuthProfileCredential, AuthProfileStore } from "./types.js";
 
@@ -61,6 +62,9 @@ export function upsertAuthProfile(params: {
   const store = ensureAuthProfileStore(params.agentDir);
   store.profiles[params.profileId] = credential;
   saveAuthProfileStore(store, params.agentDir);
+  // Keep the in-memory runtime snapshot in sync so the running gateway
+  // picks up the new credential immediately without a restart.
+  updateRuntimeAuthProfileStoreSnapshot(params.agentDir, store);
 }
 
 export async function upsertAuthProfileWithLock(params: {
